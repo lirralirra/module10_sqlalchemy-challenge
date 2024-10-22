@@ -3,8 +3,15 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Ignore PyCharm IDE files
+.idea/
+*.iml
+
 # C extensions
 *.so
+
+#.DS_store
+.DS_Store
 
 # Distribution / packaging
 .Python
