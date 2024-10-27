@@ -1,11 +1,10 @@
 # Import the dependencies.
 import numpy as np
-
+import datetime as dt
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func
-
 from flask import Flask, jsonify
 
 #################################################
@@ -13,7 +12,7 @@ from flask import Flask, jsonify
 #################################################
 
 # Create engine using the `hawaii.sqlite` database file
-engine = create_engine("sqlite:///hawaii.sqlite")
+engine = create_engine("sqlite:///Resources/hawaii.sqlite")
 
 # Declare a Base using `automap_base()`
 Base = automap_base()
@@ -34,90 +33,118 @@ session = Session(engine)
 app = Flask(__name__)
 
 
-
 #################################################
 # Flask Routes
 #################################################
 
+
 @app.route("/")
 def welcome():
-    """List all available api routes."""
+    """List all available API routes."""
     return (
-        f"Available Routes:<br/>"
-        f"/api/v1.0/precipitation<br/>"
-        f"/api/v1.0/stations<br/>"
-        f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/&lt;start&gt;<br/>"
-        f"/api/v1.0/&lt;start&gt;/&lt;end&gt;"
+        "Available Routes:<br/>"
+        "/api/v1.0/precipitation<br/>"
+        "/api/v1.0/stations<br/>"
+        "/api/v1.0/tobs<br/>"
+        "/api/v1.0/<start><br/>"
+        "/api/v1.0/<start>/<end>"
     )
 
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
-    """Return the precipitation data for the last year"""
-    # Calculate the date 1 year ago from the last data point in the database
-    last_date = session.query(func.max(Measurement.date)).scalar()
-    one_year_ago = dt.datetime.strptime(last_date, "%Y-%m-%d") - dt.timedelta(days=365)
+    """Return precipitation data for the last year."""
+    session = Session(engine)  # Create a new session to interact with the database
 
-    # Query for the date and precipitation for the last year
-    results = session.query(Measurement.date, Measurement.prcp). \
-        filter(Measurement.date >= one_year_ago).all()
+    last_date = session.query(func.max(Measurement.date)).scalar()  # Get the last date in the dataset
+    one_year_ago = dt.datetime.strptime(last_date, "%Y-%m-%d") - dt.timedelta(days=365)  # Calculate one year ago
 
-    # Create a dictionary from the row data and append to a list of all_precipitation
-    all_precipitation = {date: prcp for date, prcp in results}
+    # Query for precipitation data from one year ago to the last date
+    results = session.query(Measurement.date, Measurement.prcp).filter(Measurement.date >= one_year_ago).all()
 
-    return jsonify(all_precipitation)
+    session.close()  # Close the session after completing the query
+
+    all_precipitation = {date: prcp for date, prcp in results}  # Create a dictionary of date and precipitation values
+    return jsonify(all_precipitation)  # Return JSON response
 
 
 @app.route("/api/v1.0/stations")
 def stations():
     """Return a list of stations."""
-    results = session.query(Station.station).all()
-    stations = list(np.ravel(results))
-    return jsonify(stations)
+    session = Session(engine)  # Create a new session to interact with the database
+
+    results = session.query(Station.station).all()  # Query all station IDs
+
+    session.close()  # Close the session after completing the query
+
+    all_stations = list(np.ravel(results))  # Flatten results into a list
+    return jsonify(all_stations)  # Return JSON response
 
 
 @app.route("/api/v1.0/tobs")
 def temp_monthly():
-    """Return the temperature observations (tobs) for previous year."""
-    # Calculate the date 1 year ago from last date in database
-    last_date = session.query(func.max(Measurement.date)).scalar()
-    one_year_ago = dt.datetime.strptime(last_date, "%Y-%m-%d") - dt.timedelta(days=365)
+    """Return temperature observations (tobs) for previous year from most active station."""
+    session = Session(engine)  # Create a new session to interact with the database
 
-    # Query the primary station for all tobs from the last year
+    last_date = session.query(func.max(Measurement.date)).scalar()  # Get the last date in the dataset
+    one_year_ago = dt.datetime.strptime(last_date, "%Y-%m-%d") - dt.timedelta(days=365)  # Calculate one year ago
+
+    most_active_station_id = 'USC00519281'  # Specify most active station ID directly
+
+    # Query temperature observations from the most active station over the past year
     results = session.query(Measurement.tobs). \
         filter(Measurement.station == most_active_station_id). \
         filter(Measurement.date >= one_year_ago).all()
 
-    # Unravel results into a 1D array and convert to a list
-    temps = list(np.ravel(results))
+    session.close()  # Close the session after completing the query
 
-    # Return the results
-    return jsonify(temps)
+    temps = list(np.ravel(results))  # Flatten results into a list
+
+    return jsonify(temps)  # Return JSON response
 
 
 @app.route("/api/v1.0/<start>")
+def start_route(start):
+    """Return min, avg, and max temperatures from start date to end of dataset."""
+    session = Session(engine)  # Create a new session to interact with the database
+
+    results = session.query(
+        func.min(Measurement.tobs),
+        func.avg(Measurement.tobs),
+        func.max(Measurement.tobs)
+    ).filter(Measurement.date >= start).all()  # Query for min, avg, and max temperatures from start date onward
+
+    session.close()  # Close the session after completing the query
+
+    temps = list(np.ravel(results))  # Flatten results into a list
+    return jsonify({
+        "TMIN": temps[0],
+        "TAVG": temps[1],
+        "TMAX": temps[2]
+    })  # Return JSON response
+
+
 @app.route("/api/v1.0/<start>/<end>")
-def stats(start=None, end=None):
-    """Return TMIN, TAVG, TMAX."""
+def start_end_route(start, end):
+    """Return min, avg, and max temperatures from start date to end date."""
+    session = Session(engine)  # Create a new session to interact with the database
 
-    # Select statement
-    sel = [func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
+    results = session.query(
+        func.min(Measurement.tobs),
+        func.avg(Measurement.tobs),
+        func.max(Measurement.tobs)
+    ).filter(Measurement.date >= start).filter(
+        Measurement.date <= end).all()  # Query for min, avg, and max temperatures between start and end dates
 
-    if not end:
-        # Calculate TMIN, TAVG, TMAX for dates greater than or equal to start
-        results = session.query(*sel). \
-            filter(Measurement.date >= start).all()
-    else:
-        # Calculate TMIN, TAVG, TMAX with start and stop
-        results = session.query(*sel). \
-            filter(Measurement.date >= start). \
-            filter(Measurement.date <= end).all()
+    session.close()  # Close the session after completing the query
 
-    # Unravel results into a 1D array and convert to a list
-    temps = list(np.ravel(results))
-    return jsonify(temps)
+    temps = list(np.ravel(results))  # Flatten results into a list
+    return jsonify({
+        "TMIN": temps[0],
+        "TAVG": temps[1],
+        "TMAX": temps[2]
+    })  # Return JSON response
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True)  # Run the app in debug mode
